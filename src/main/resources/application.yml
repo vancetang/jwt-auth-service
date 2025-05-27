@@ -1,3 +1,7 @@
+# Server configuration (if needed, e.g., port)
+server:
+  port: 8080
+
 # Spring Boot application configuration
 spring:
   application:
@@ -23,7 +27,3 @@ jwt:
   blacklist:
     cleanupFixedRateMs: 3600000 # 1 hour in milliseconds (for @Scheduled task)
     cleanupBufferMs: 86400000 # 24 hours in milliseconds (buffer for JTI retention after token expiry)
-
-# Server configuration (if needed, e.g., port)
-server:
-  port: 8080

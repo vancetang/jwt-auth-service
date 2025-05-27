@@ -1,12 +1,37 @@
+# Spring Boot application configuration
 spring:
   application:
     name: jwt-auth-service
 
-# Swagger UI: http://localhost:8080/swagger-ui.html
-# API Docs (JSON): http://localhost:8080/v3/api-docs
-springdoc:
-  swagger-ui:
-    url: /v3/api-docs
-    path: /swagger-ui.html
-  api-docs:
-    enabled: true
+# JWT Configuration
+# IMPORTANT: The secretKey should be a strong, base64-encoded string.
+# In a production environment, this key should be externalized
+# (e.g., via environment variables or a secrets management service)
+# and not hardcoded or checked into version control.
+# For HS256, the key should be at least 32 bytes (256 bits).
+# For HS384, at least 48 bytes (384 bits).
+# For HS512, at least 64 bytes (512 bits).
+# You can generate a suitable key using a tool or programmatically, then Base64 encode it.
+# Example (generate 64 random bytes and Base64 encode them):
+# python3 -c "import os, base64; print(base64.b64encode(os.urandom(64)).decode())"
+jwt:
+  secretKey: "gXMpGfPzN2gXw8aQwX9gRmWm8u7kZqP7y0xQ6tGkZ9lX3tJvLhE1bVfHcOcDkSbI0mNsYpZoUuA2wQ==" # Example Base64 encoded HS512 key. PLEASE REPLACE THIS with your own strong, unique key.
+  issuer: "my-auth-service"
+  audience: "my-app"
+  accessTokenExpirationMs: 3600000 # 1 hour (1 * 60 * 60 * 1000)
+  refreshTokenExpirationMs: 86400000 # 24 hours (24 * 60 * 60 * 1000)
+  blacklist:
+    cleanupFixedRateMs: 3600000   # 1 hour in milliseconds (for @Scheduled task)
+    cleanupBufferMs: 86400000     # 24 hours in milliseconds (buffer for JTI retention after token expiry)
+
+# Server configuration (if needed, e.g., port)
+# server:
+#   port: 8080
+
+# Logging configuration (example, if not using a separate logback.xml or log4j2.xml)
+logging:
+  level:
+    root: INFO
+    com.jwt.auth: DEBUG # Set specific package log level
+    org.springframework.security: INFO # Can be DEBUG for more security details
+    io.jsonwebtoken: INFO # Set to WARN or ERROR in production if too verbose

@@ -1,8 +1,6 @@
 package com.jwt.auth.payload.request;
 
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * 用於刷新權杖請求的資料傳輸物件 (DTO)。

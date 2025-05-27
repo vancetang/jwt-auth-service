@@ -1,12 +1,10 @@
 package com.jwt.auth.payload.response;
 
+import java.util.List;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
-
-import java.util.List;
 
 /**
  * 用於返回使用者資訊的資料傳輸物件 (DTO)。

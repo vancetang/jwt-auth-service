@@ -1,8 +1,6 @@
 package com.jwt.auth.payload.response;
 
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * 用於 JWT 身份驗證回應的資料傳輸物件 (DTO)。

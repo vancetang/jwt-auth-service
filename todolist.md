@@ -30,6 +30,7 @@
     *   [x] 實現記憶體黑名單自動清理機制 - (已完成)
     *   [x] 實現 Refresh Token 連帶失效 - (已完成)
 *   [x] 確保 Refresh Token 與 Access Token 有不同的過期時間 - (已完成, 透過 JwtConfigProperties 配置)
+*   [x] 將 AuthController 所有英文訊息轉為繁體中文 - (已完成)
 *   [x] 撰寫函式級註解 - (已完成, 全面檢視和補全)
 *   [ ] 撰寫 README.md (專案描述、檔案結構、使用技術、安裝執行方式)
 *   [ ] 產生 report.md (彙整所有子任務報告)

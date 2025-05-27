@@ -1,5 +1,21 @@
 package com.jwt.auth.security;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -7,22 +23,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
-import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 自訂 JWT 身份驗證過濾器，用於攔截傳入的請求以驗證 JWT 權杖。
@@ -34,21 +34,8 @@ import java.util.stream.Collectors;
 @Component
 @Slf4j // Lombok: 自動生成日誌記錄器
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    private final JwtTokenProvider jwtTokenProvider;
-    private final UserDetailsService userDetailsService; // 通常是自訂的 UserDetailsService 實作
-
-    /**
-     * 建構 {@code JwtAuthenticationFilter}。
-     *
-     * @param jwtTokenProvider   用於 JWT 操作（生成、驗證、聲明提取）的服務。
-     * @param userDetailsService 用於載入使用者特定資料的服務 (例如 {@link com.jwt.auth.service.CustomUserDetailsService})。
-     */
     @Autowired
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserDetailsService userDetailsService) {
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.userDetailsService = userDetailsService;
-    }
+    private JwtTokenProvider jwtTokenProvider;
 
     /**
      * 執行 JWT 身份驗證的核心過濾邏輯。
@@ -59,19 +46,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * <p>
      * 處理流程：
      * <ol>
-     *   <li>從請求中提取 JWT ({@link #extractJwtFromRequest(HttpServletRequest)})。</li>
-     *   <li>如果 JWT 存在且通過 {@link JwtTokenProvider#validateToken(String)} 驗證：
-     *     <ul>
-     *       <li>從權杖中提取使用者 ID (通常是 subject) 和角色聲明。</li>
-     *       <li>將角色轉換為 {@link GrantedAuthority} 列表。</li>
-     *       <li>建立一個 {@link UsernamePasswordAuthenticationToken} (將使用者 ID 設為 principal，
-     *           憑證設為 null，因為權杖已驗證)。</li>
-     *       <li>設定身份驗證物件的詳細資訊 (如 IP 位址、Session ID)。</li>
-     *       <li>將身份驗證物件設定到 {@link SecurityContextHolder} 中。</li>
-     *     </ul>
-     *   </li>
-     *   <li>如果 JWT 無效或不存在，則清除 {@link SecurityContextHolder} (以防萬一)，
-     *       並允許請求繼續傳遞到過濾鏈中的下一個元素。後續的安全檢查將處理未認證的訪問。</li>
+     * <li>從請求中提取 JWT ({@link #extractJwtFromRequest(HttpServletRequest)})。</li>
+     * <li>如果 JWT 存在且通過 {@link JwtTokenProvider#validateToken(String)} 驗證：
+     * <ul>
+     * <li>從權杖中提取使用者 ID (通常是 subject) 和角色聲明。</li>
+     * <li>將角色轉換為 {@link GrantedAuthority} 列表。</li>
+     * <li>建立一個 {@link UsernamePasswordAuthenticationToken} (將使用者 ID 設為 principal，
+     * 憑證設為 null，因為權杖已驗證)。</li>
+     * <li>設定身份驗證物件的詳細資訊 (如 IP 位址、Session ID)。</li>
+     * <li>將身份驗證物件設定到 {@link SecurityContextHolder} 中。</li>
+     * </ul>
+     * </li>
+     * <li>如果 JWT 無效或不存在，則清除 {@link SecurityContextHolder} (以防萬一)，
+     * 並允許請求繼續傳遞到過濾鏈中的下一個元素。後續的安全檢查將處理未認證的訪問。</li>
      * </ol>
      * </p>
      *
@@ -82,9 +69,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * @throws IOException      如果發生 I/O 錯誤。
      */
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
         try {
             String jwt = extractJwtFromRequest(request);
 
@@ -95,7 +82,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 List<String> roles = claims.get("roles", List.class);
 
                 if (roles == null) {
-                    log.warn("JWT token for user {} does not contain 'roles' claim or it's not a List. Treating as no roles.", userId);
+                    log.warn(
+                            "使用者 {} 的 JWT 權杖未包含 'roles' 聲明或型別錯誤，將視為無角色。",
+                            userId);
                     roles = List.of(); // Default to no roles if claim is missing or incorrect type
                 }
 
@@ -106,34 +95,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // In a typical scenario with UserDetailsService, you might load UserDetails:
                 // UserDetails userDetails = userDetailsService.loadUserByUsername(userId);
                 // However, since our token is self-contained and already validated,
-                // and we extract roles directly from it, we can construct the Authentication token directly.
+                // and we extract roles directly from it, we can construct the Authentication
+                // token directly.
                 // If additional checks from UserDetails (e.g., isAccountNonLocked) are needed,
                 // then loading UserDetails would be more appropriate.
                 // For this implementation, we directly use info from token.
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userId, // Principal can be userId string or UserDetails object
-                        null,   // Credentials are not needed as token is already validated
+                        null, // Credentials are not needed as token is already validated
                         authorities);
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.debug("Successfully authenticated user '{}' with roles {} from JWT.", userId, roles);
+                log.debug("成功從 JWT 驗證使用者 '{}'，角色為 {}。", userId, roles);
 
             } else {
                 if (StringUtils.hasText(jwt)) {
-                    log.debug("JWT token present but invalid for request to {}.", request.getRequestURI());
+                    log.debug("JWT 權杖存在但無效，請求路徑：{}。", request.getRequestURI());
                 } else {
-                    log.trace("No JWT token found in Authorization header for request to {}.", request.getRequestURI());
+                    log.trace("在授權標頭中未找到 JWT 權杖，請求路徑：{}。", request.getRequestURI());
                 }
             }
         } catch (JwtException e) {
-            log.warn("JWT processing error for request to {}: {}", request.getRequestURI(), e.getMessage());
+            log.warn("處理 JWT 時發生錯誤，請求路徑：{}，錯誤訊息：{}", request.getRequestURI(), e.getMessage());
             // Allow the request to proceed without authentication.
             // Access to protected resources will be denied by subsequent security checks.
             SecurityContextHolder.clearContext(); // Ensure context is cleared on error
         } catch (Exception e) {
-            log.error("Unexpected error during JWT authentication filter for request to {}: {}", request.getRequestURI(), e.getMessage(), e);
+            log.error("JWT 驗證過濾器執行時發生未預期錯誤，請求路徑：{}，錯誤訊息：{}",
+                    request.getRequestURI(), e.getMessage(), e);
             SecurityContextHolder.clearContext(); // Ensure context is cleared on error
         }
 
@@ -154,7 +145,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7); // Remove "Bearer " prefix
         }
-        log.trace("No 'Bearer ' token found in Authorization header for request to {}", request.getRequestURI());
+        log.trace("在授權標頭中未找到 'Bearer ' 權杖，請求路徑：{}。", request.getRequestURI());
         return null;
     }
 }

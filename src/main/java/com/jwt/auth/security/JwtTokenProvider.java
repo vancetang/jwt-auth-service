@@ -1,26 +1,30 @@
 package com.jwt.auth.security;
 
-import com.jwt.auth.config.JwtConfigProperties;
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import io.jsonwebtoken.security.SignatureException;
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
-import java.util.Date;
+import com.jwt.auth.config.JwtConfigProperties;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * JWT 權杖服務類別，負責 JWT 的生成、驗證、聲明提取以及基於 JTI 的權杖失效管理與清理。
@@ -28,13 +32,15 @@ import java.util.Date;
  * 此服務依賴於 {@link JwtConfigProperties} 中定義的組態屬性來進行操作。
  * 主要功能包括：
  * <ul>
- *   <li>初始化用於簽章的密鑰 ({@link #init()})。</li>
- *   <li>生成存取權杖 ({@link #generateAccessToken(String, List)}) 和刷新權杖 ({@link #generateRefreshToken(String)})。</li>
- *   <li>驗證權杖的有效性 ({@link #validateToken(String)})，包括簽名、過期時間和 JTI 是否已失效。</li>
- *   <li>使權杖失效 ({@link #invalidateToken(String)})，通常用於登出操作。</li>
- *   <li>從權杖中提取聲明 ({@link #getClaims(String)})、使用者 ID ({@link #getUserIdFromToken(String)})
- *       和 JWT ID ({@link #getJtiFromToken(String)})。</li>
- *   <li>檢查權杖是否過期 ({@link #isTokenExpired(String)})。</li>
+ * <li>初始化用於簽章的密鑰 ({@link #init()})。</li>
+ * <li>生成存取權杖 ({@link #generateAccessToken(String, List)}) 和刷新權杖
+ * ({@link #generateRefreshToken(String)})。</li>
+ * <li>驗證權杖的有效性 ({@link #validateToken(String)})，包括簽名、過期時間和 JTI 是否已失效。</li>
+ * <li>使權杖失效 ({@link #invalidateToken(String)})，通常用於登出操作。</li>
+ * <li>從權杖中提取聲明 ({@link #getClaims(String)})、使用者 ID
+ * ({@link #getUserIdFromToken(String)})
+ * 和 JWT ID ({@link #getJtiFromToken(String)})。</li>
+ * <li>檢查權杖是否過期 ({@link #isTokenExpired(String)})。</li>
  * </ul>
  * </p>
  */
@@ -42,20 +48,11 @@ import java.util.Date;
 @Slf4j // Lombok: 自動生成日誌記錄器
 public class JwtTokenProvider {
 
-    private final JwtConfigProperties jwtConfigProperties; // JWT 組態屬性
+    @Autowired
+    private JwtConfigProperties jwtConfigProperties; // JWT 組態屬性
     private SecretKey secretKey; // 用於 JWT 簽章的密鑰
     // 將 invalidatedJtis 修改為 Map，用於儲存 JTI 及其對應 Token 的原始過期時間戳
     private final Map<String, Long> invalidatedJtisWithTimestamp = new ConcurrentHashMap<>();
-
-    /**
-     * 建構 {@code JwtTokenProvider} 並注入必要的 {@link JwtConfigProperties}。
-     *
-     * @param jwtConfigProperties JWT 組態屬性物件，包含密鑰、發行者、過期時間等設定。
-     */
-    @Autowired
-    public JwtTokenProvider(JwtConfigProperties jwtConfigProperties) {
-        this.jwtConfigProperties = jwtConfigProperties;
-    }
 
     /**
      * 初始化 {@link SecretKey} 物件。
@@ -65,6 +62,7 @@ public class JwtTokenProvider {
      * 將其解碼並轉換為 {@link SecretKey} 物件，以供後續的權杖簽署與驗證操作使用。
      * 確保在執行任何權杖操作之前，密鑰已準備就緒。
      * </p>
+     * 
      * @throws RuntimeException 如果 Base64 密鑰解碼失敗或密鑰長度不足以適用於所選算法。
      */
     @PostConstruct
@@ -72,11 +70,14 @@ public class JwtTokenProvider {
         try {
             byte[] keyBytes = Decoders.BASE64.decode(jwtConfigProperties.getSecretKey());
             this.secretKey = Keys.hmacShaKeyFor(keyBytes);
-            log.info("JWT SecretKey initialized successfully. Algorithm: {}", this.secretKey.getAlgorithm());
+            log.info("JWT SecretKey 初始化成功。演算法：{}", this.secretKey.getAlgorithm());
         } catch (IllegalArgumentException e) {
-            log.error("Error decoding Base64 secret key: {}. Ensure the key is correctly Base64 encoded and of sufficient length for the chosen algorithm.", e.getMessage());
+            log.error(
+                    "解碼 Base64 密鑰時發生錯誤：{}。請確認密鑰已正確 Base64 編碼且長度符合演算法需求。",
+                    e.getMessage());
             // Potentially rethrow or handle as a critical startup failure
-            throw new RuntimeException("Failed to initialize JWT SecretKey due to invalid Base64 encoding or key length.", e);
+            throw new RuntimeException(
+                    "因 Base64 編碼錯誤或密鑰長度不足，無法初始化 JWT SecretKey。", e);
         }
     }
 
@@ -85,20 +86,21 @@ public class JwtTokenProvider {
      * <p>
      * 存取權杖包含以下標準聲明和自訂聲明：
      * <ul>
-     *   <li>{@code sub} (Subject): 使用者 ID。</li>
-     *   <li>{@code roles}: 使用者角色列表。</li>
-     *   <li>{@code typ} (Type): 設定為 "Bearer"。</li>
-     *   <li>{@code jti} (JWT ID): 唯一的權杖識別碼。</li>
-     *   <li>{@code iss} (Issuer): 從 {@link JwtConfigProperties} 獲取。</li>
-     *   <li>{@code aud} (Audience): 從 {@link JwtConfigProperties} 獲取。</li>
-     *   <li>{@code iat} (Issued At): 權杖發行時間。</li>
-     *   <li>{@code exp} (Expiration Time): 權杖過期時間，根據 {@link JwtConfigProperties#getAccessTokenExpirationMs()} 計算。</li>
+     * <li>{@code sub} (Subject): 使用者 ID。</li>
+     * <li>{@code roles}: 使用者角色列表。</li>
+     * <li>{@code typ} (Type): 設定為 "Bearer"。</li>
+     * <li>{@code jti} (JWT ID): 唯一的權杖識別碼。</li>
+     * <li>{@code iss} (Issuer): 從 {@link JwtConfigProperties} 獲取。</li>
+     * <li>{@code aud} (Audience): 從 {@link JwtConfigProperties} 獲取。</li>
+     * <li>{@code iat} (Issued At): 權杖發行時間。</li>
+     * <li>{@code exp} (Expiration Time): 權杖過期時間，根據
+     * {@link JwtConfigProperties#getAccessTokenExpirationMs()} 計算。</li>
      * </ul>
      * 權杖使用 HS512 算法和初始化的密鑰進行簽署。
      * </p>
      *
-     * @param userId 使用者的唯一識別碼。
-     * @param roles  與使用者關聯的角色列表。
+     * @param userId          使用者的唯一識別碼。
+     * @param roles           與使用者關聯的角色列表。
      * @param refreshTokenJti 對應的 Refresh Token 的 JTI，用於實現連帶失效。
      * @return 已簽署的 JWT 存取權杖字串。
      */
@@ -107,6 +109,7 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + jwtConfigProperties.getAccessTokenExpirationMs());
         String accessTokenJti = UUID.randomUUID().toString(); // Access Token 自身的 JTI
 
+        // 產生 Access Token，audience 改用 claim("aud", ...)
         return Jwts.builder()
                 .subject(userId)
                 .claim("roles", roles)
@@ -114,10 +117,10 @@ public class JwtTokenProvider {
                 .claim("rt_jti", refreshTokenJti) // 新增：關聯的 Refresh Token JTI
                 .id(accessTokenJti) // Access Token 自身的 JTI
                 .issuer(jwtConfigProperties.getIssuer())
-                .audience(jwtConfigProperties.getAudience())
+                .claim("aud", jwtConfigProperties.getAudience())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(secretKey, SignatureAlgorithm.HS512) // Ensure algorithm matches key strength
+                .signWith(secretKey, Jwts.SIG.HS512) // Ensure algorithm matches key strength
                 .compact();
     }
 
@@ -126,13 +129,14 @@ public class JwtTokenProvider {
      * <p>
      * 刷新權杖包含以下標準聲明和自訂聲明：
      * <ul>
-     *   <li>{@code sub} (Subject): 使用者 ID。</li>
-     *   <li>{@code typ} (Type): 設定為 "Refresh"。</li>
-     *   <li>{@code jti} (JWT ID): 唯一的權杖識別碼。</li>
-     *   <li>{@code iss} (Issuer): 從 {@link JwtConfigProperties} 獲取。</li>
-     *   <li>{@code aud} (Audience): 從 {@link JwtConfigProperties} 獲取。</li>
-     *   <li>{@code iat} (Issued At): 權杖發行時間。</li>
-     *   <li>{@code exp} (Expiration Time): 權杖過期時間，根據 {@link JwtConfigProperties#getRefreshTokenExpirationMs()} 計算。</li>
+     * <li>{@code sub} (Subject): 使用者 ID。</li>
+     * <li>{@code typ} (Type): 設定為 "Refresh"。</li>
+     * <li>{@code jti} (JWT ID): 唯一的權杖識別碼。</li>
+     * <li>{@code iss} (Issuer): 從 {@link JwtConfigProperties} 獲取。</li>
+     * <li>{@code aud} (Audience): 從 {@link JwtConfigProperties} 獲取。</li>
+     * <li>{@code iat} (Issued At): 權杖發行時間。</li>
+     * <li>{@code exp} (Expiration Time): 權杖過期時間，根據
+     * {@link JwtConfigProperties#getRefreshTokenExpirationMs()} 計算。</li>
      * </ul>
      * 權杖使用 HS512 算法和初始化的密鑰進行簽署。
      * </p>
@@ -145,15 +149,16 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + jwtConfigProperties.getRefreshTokenExpirationMs());
         String jti = UUID.randomUUID().toString();
 
+        // 產生 Refresh Token，audience 改用 claim("aud", ...)
         return Jwts.builder()
                 .subject(userId)
                 .claim("typ", "Refresh") // Token Type
                 .id(jti) // JWT ID
                 .issuer(jwtConfigProperties.getIssuer())
-                .audience(jwtConfigProperties.getAudience())
+                .claim("aud", jwtConfigProperties.getAudience())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(secretKey, SignatureAlgorithm.HS512) // Ensure algorithm matches key strength
+                .signWith(secretKey, Jwts.SIG.HS512) // Ensure algorithm matches key strength
                 .compact();
     }
 
@@ -168,7 +173,7 @@ public class JwtTokenProvider {
      */
     public boolean validateToken(String token) {
         if (token == null || token.isBlank()) {
-            log.warn("Validation attempt with null or blank token.");
+            log.warn("驗證時發現權杖為空或為空白字串。");
             return false;
         }
         try {
@@ -177,22 +182,23 @@ public class JwtTokenProvider {
             if (jti != null && invalidatedJtisWithTimestamp.containsKey(jti)) {
                 // 可選增強：檢查儲存的 expirationTime 是否已過期。
                 // 但為了明確的登出語義，只要在黑名單中就視為失效。清理任務會負責移除。
-                log.warn("Validation failed: Token JTI ({}) is invalidated (logged out).", jti);
+                log.warn("驗證失敗：Token JTI ({}) 已失效（已登出）。", jti);
                 return false;
             }
 
             Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token);
             return true;
-        } catch (ExpiredJwtException ex) { // Order matters: check expiration and invalidation before other structural issues
-            log.warn("Expired JWT token: {}", ex.getMessage());
+        } catch (ExpiredJwtException ex) { // Order matters: check expiration and invalidation before other structural
+                                           // issues
+            log.warn("JWT 權杖已過期：{}", ex.getMessage());
         } catch (SignatureException ex) {
-            log.error("Invalid JWT signature: {}", ex.getMessage());
+            log.error("JWT 簽章無效：{}", ex.getMessage());
         } catch (MalformedJwtException ex) {
-            log.error("Invalid JWT token: {}", ex.getMessage());
+            log.error("JWT 權杖無效：{}", ex.getMessage());
         } catch (UnsupportedJwtException ex) {
-            log.error("Unsupported JWT token: {}", ex.getMessage());
+            log.error("不支援的 JWT 權杖：{}", ex.getMessage());
         } catch (IllegalArgumentException ex) { // This can be thrown by getJtiFromTokenUnsafe or parser
-            log.error("JWT claims string is empty, null, or token structure is invalid: {}", ex.getMessage());
+            log.error("JWT claims 字串為空、null 或權杖結構無效：{}", ex.getMessage());
         }
         return false;
     }
@@ -208,7 +214,7 @@ public class JwtTokenProvider {
      */
     public void invalidateToken(String token) {
         if (token == null || token.isBlank()) {
-            log.warn("Attempt to invalidate a null or blank token.");
+            log.warn("嘗試使權杖失效時發現權杖為空或為空白字串。");
             return;
         }
         try {
@@ -217,7 +223,8 @@ public class JwtTokenProvider {
 
             if (accessTokenJti != null && accessTokenExpiry != null) {
                 invalidatedJtisWithTimestamp.put(accessTokenJti, accessTokenExpiry.getTime());
-                log.info("Access Token with JTI {} and original expiry {} invalidated successfully.", accessTokenJti, accessTokenExpiry);
+                log.info("Access Token JTI {} 及原始過期時間 {} 已成功失效。", accessTokenJti,
+                        accessTokenExpiry);
 
                 // 嘗試提取並失效關聯的 Refresh Token JTI
                 String refreshTokenJti = getRefreshTokenJtiFromAccessTokenUnsafe(token);
@@ -227,51 +234,55 @@ public class JwtTokenProvider {
                     // 一個更精確的做法是，如果可能，獲取 Refresh Token 的實際過期時間。
                     // 但在僅有 Access Token 的情況下，這是一個合理的簡化。
                     invalidatedJtisWithTimestamp.put(refreshTokenJti, accessTokenExpiry.getTime());
-                    log.info("Associated Refresh Token JTI {} also blacklisted, linked to Access Token's expiry for cleanup.", refreshTokenJti);
+                    log.info(
+                            "關聯的 Refresh Token JTI {} 也已加入黑名單，並與 Access Token 的過期時間連動清理。",
+                            refreshTokenJti);
                 } else {
-                    log.warn("No rt_jti found in Access Token with JTI {} during invalidation.", accessTokenJti);
+                    log.warn("Access Token JTI {} 在失效處理時未找到 rt_jti。", accessTokenJti);
                 }
 
             } else if (accessTokenJti != null) { // Access Token JTI 存在，但無法獲取其過期時間
                 long fallbackExpiry = System.currentTimeMillis() + jwtConfigProperties.getAccessTokenExpirationMs();
                 invalidatedJtisWithTimestamp.put(accessTokenJti, fallbackExpiry);
-                log.warn("Access Token with JTI {} invalidated with fallback expiry {} due to missing original exp.", accessTokenJti, new Date(fallbackExpiry));
+                log.warn("Access Token JTI {} 因缺少原始過期時間，已使用備援過期時間 {} 進行失效處理。", accessTokenJti,
+                        new Date(fallbackExpiry));
                 // 在這種情況下，我們仍然嘗試處理 rt_jti
                 String refreshTokenJti = getRefreshTokenJtiFromAccessTokenUnsafe(token);
                 if (refreshTokenJti != null) {
                     invalidatedJtisWithTimestamp.put(refreshTokenJti, fallbackExpiry); // 使用相同的 fallback expiry
-                    log.info("Associated Refresh Token JTI {} also blacklisted with fallback expiry.", refreshTokenJti);
+                    log.info("關聯的 Refresh Token JTI {} 也已使用備援過期時間加入黑名單。", refreshTokenJti);
                 }
             } else {
-                log.warn("Failed to invalidate token: Could not extract JTI from Access Token.");
+                log.warn("權杖失效失敗：無法從 Access Token 擷取 JTI。");
             }
         } catch (Exception e) { // 捕獲解析 JTI/EXP 或其他潛在異常
-            log.warn("Failed to invalidate token due to error extracting JTI/EXP or other issue: {}. Token: {}", e.getMessage(), token);
+            log.warn("權杖失效失敗，擷取 JTI/EXP 或其他處理時發生錯誤：{}。Token: {}", e.getMessage(), token);
         }
     }
 
     /**
      * 直接使一個 JTI 失效，通常用於 Refresh Token 的精確失效控制。
      *
-     * @param jti 要失效的 JTI。
+     * @param jti                     要失效的 JTI。
      * @param originalExpiryTimestamp JTI 對應權杖的原始過期時間戳 (毫秒)。如果為 null，將使用備援策略。
      */
     public void invalidateJti(String jti, Long originalExpiryTimestamp) {
         if (jti == null || jti.isBlank()) {
-            log.warn("Attempt to invalidate a null or blank JTI.");
+            log.warn("嘗試使 JTI 失效時發現 JTI 為空或為空白字串。");
             return;
         }
         if (originalExpiryTimestamp != null) {
             invalidatedJtisWithTimestamp.put(jti, originalExpiryTimestamp);
-            log.info("JTI {} invalidated successfully with original expiry {}.", jti, new Date(originalExpiryTimestamp));
+            log.info("JTI {} 已成功失效，原始過期時間 {}。", jti,
+                    new Date(originalExpiryTimestamp));
         } else {
             // 如果無法獲取 exp，存入一個預設的較長的存活時間（例如 Refresh Token 的有效期）
             long fallbackExpiry = System.currentTimeMillis() + jwtConfigProperties.getRefreshTokenExpirationMs();
             invalidatedJtisWithTimestamp.put(jti, fallbackExpiry);
-            log.warn("JTI {} invalidated with fallback expiry {} due to missing original exp.", jti, new Date(fallbackExpiry));
+            log.warn("JTI {} 因缺少原始過期時間，已使用備援過期時間 {} 進行失效處理。", jti,
+                    new Date(fallbackExpiry));
         }
     }
-
 
     /**
      * 解析給定的 JWT 權杖並返回其聲明 (Claims)。
@@ -281,7 +292,7 @@ public class JwtTokenProvider {
      *
      * @param token 要解析的 JWT 權杖字串。
      * @return 從權杖中提取的 {@link Claims} 物件。
-     * @throws JwtException 如果權杖無法成功解析或驗證 (例如，簽名無效、格式錯誤)。
+     * @throws JwtException             如果權杖無法成功解析或驗證 (例如，簽名無效、格式錯誤)。
      * @throws IllegalArgumentException 如果權杖字串為 {@code null} 或空白。
      */
     public Claims getClaims(String token) {
@@ -300,7 +311,7 @@ public class JwtTokenProvider {
      *
      * @param token JWT 權杖字串。
      * @return 使用者 ID (通常是 {@code sub} 聲明的值)。
-     * @throws JwtException 如果權杖無法成功解析或驗證。
+     * @throws JwtException             如果權杖無法成功解析或驗證。
      * @throws IllegalArgumentException 如果權杖字串為 {@code null} 或空白。
      */
     public String getUserIdFromToken(String token) {
@@ -312,7 +323,7 @@ public class JwtTokenProvider {
      *
      * @param token JWT 權杖字串。
      * @return JWT ID ({@code jti} 聲明的值)。
-     * @throws JwtException 如果權杖無法成功解析或驗證。
+     * @throws JwtException             如果權杖無法成功解析或驗證。
      * @throws IllegalArgumentException 如果權杖字串為 {@code null} 或空白。
      */
     public String getJtiFromToken(String token) {
@@ -337,23 +348,26 @@ public class JwtTokenProvider {
         try {
             String[] splitToken = token.split("\\.");
             if (splitToken.length < 3) { // A JWT must have 3 parts
-                log.warn("Unsafe JTI extraction: Token does not have 3 parts.");
+                log.warn("不安全的 JTI 擷取：權杖結構不足 3 部分。");
                 return null;
             }
             // Payload is the second part
             byte[] payloadBytes = Decoders.BASE64URL.decode(splitToken[1]);
             String payloadString = new String(payloadBytes, java.nio.charset.StandardCharsets.UTF_8);
-            
+
             // Simple manual parsing for "jti" - less robust than using a full parser
             // but avoids signature/expiration checks. For a more robust way, use a parser
             // configured to skip signature validation, if the library supports it.
             // ObjectMapper could also be used here if Jackson is a dependency.
-            // Example: com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            // com.fasterxml.jackson.databind.JsonNode jsonNode = mapper.readTree(payloadString);
+            // Example: com.fasterxml.jackson.databind.ObjectMapper mapper = new
+            // com.fasterxml.jackson.databind.ObjectMapper();
+            // com.fasterxml.jackson.databind.JsonNode jsonNode =
+            // mapper.readTree(payloadString);
             // return jsonNode.has("jti") ? jsonNode.get("jti").asText() : null;
-            
+
             // Basic string search for "jti"
-            // This is a simplified approach and might not be robust for all JSON structures.
+            // This is a simplified approach and might not be robust for all JSON
+            // structures.
             // Consider using a proper JSON parsing library for more complex scenarios.
             String jtiClaim = "\"jti\":\"";
             int startIndex = payloadString.indexOf(jtiClaim);
@@ -368,10 +382,10 @@ public class JwtTokenProvider {
             return payloadString.substring(startIndex, endIndex);
 
         } catch (IllegalArgumentException e) { // Catch Base64 decoding errors
-            log.warn("Unsafe JTI extraction: Error decoding token payload. {}", e.getMessage());
+            log.warn("不安全的 JTI 擷取：解碼權杖 payload 時發生錯誤。{}", e.getMessage());
             return null;
         } catch (Exception e) { // Catch any other unexpected errors during unsafe parsing
-            log.warn("Unsafe JTI extraction: Unexpected error. {}", e.getMessage());
+            log.warn("不安全的 JTI 擷取：發生未預期錯誤。{}", e.getMessage());
             return null;
         }
     }
@@ -381,6 +395,7 @@ public class JwtTokenProvider {
      * <p>
      * **警告：** 此方法不驗證權杖的簽名或過期時間。僅在完全理解安全隱患的情況下使用。
      * </p>
+     * 
      * @param accessToken Access Token 字串。
      * @return 如果解析成功且 Claim 存在，則返回 Refresh Token JTI 字串；否則返回 {@code null}。
      */
@@ -391,7 +406,7 @@ public class JwtTokenProvider {
         try {
             String[] splitToken = accessToken.split("\\.");
             if (splitToken.length < 3) {
-                log.warn("Unsafe RT_JTI extraction: Access Token does not have 3 parts.");
+                log.warn("不安全的 RT_JTI 擷取：Access Token 結構不足 3 部分。");
                 return null;
             }
             byte[] payloadBytes = Decoders.BASE64URL.decode(splitToken[1]);
@@ -410,11 +425,10 @@ public class JwtTokenProvider {
             return payloadString.substring(startIndex, endIndex);
 
         } catch (Exception e) {
-            log.warn("Unsafe RT_JTI extraction: Error parsing Access Token payload for rt_jti. {}", e.getMessage());
+            log.warn("不安全的 RT_JTI 擷取：解析 Access Token payload 取得 rt_jti 時發生錯誤。{}", e.getMessage());
             return null;
         }
     }
-
 
     /**
      * 從 JWT 權杖中提取過期時間 (exp)，不執行完整簽名驗證。
@@ -422,6 +436,7 @@ public class JwtTokenProvider {
      * 類似於 {@link #getJtiFromTokenUnsafe(String)}，此方法用於從可能已過期或簽名無效的權杖中提取資訊。
      * **警告：** 此方法不驗證權杖的簽名。僅在完全理解安全隱患的情況下使用。
      * </p>
+     * 
      * @param token JWT 權杖字串。
      * @return 如果解析成功，則返回 {@link Date} 形式的過期時間；否則返回 {@code null}。
      */
@@ -432,7 +447,7 @@ public class JwtTokenProvider {
         try {
             String[] splitToken = token.split("\\.");
             if (splitToken.length < 3) {
-                log.warn("Unsafe EXP extraction: Token does not have 3 parts.");
+                log.warn("不安全的 EXP 擷取：權杖結構不足 3 部分。");
                 return null;
             }
             byte[] payloadBytes = Decoders.BASE64URL.decode(splitToken[1]);
@@ -442,10 +457,12 @@ public class JwtTokenProvider {
             String expClaimKey = "\"exp\":";
             int startIndex = payloadString.indexOf(expClaimKey);
             if (startIndex == -1) {
-                // try finding without quotes around exp, just in case though standard is with quotes
+                // try finding without quotes around exp, just in case though standard is with
+                // quotes
                 expClaimKey = "exp:";
                 startIndex = payloadString.indexOf(expClaimKey);
-                if (startIndex == -1) return null;
+                if (startIndex == -1)
+                    return null;
             }
             startIndex += expClaimKey.length();
 
@@ -454,27 +471,27 @@ public class JwtTokenProvider {
             while (endIndex < payloadString.length() && Character.isDigit(payloadString.charAt(endIndex))) {
                 endIndex++;
             }
-            
+
             if (startIndex == endIndex) { // No digits found
-                 log.warn("Unsafe EXP extraction: No digits found for EXP value.");
-                 return null;
+                log.warn("不安全的 EXP 擷取：未找到 EXP 數值。");
+                return null;
             }
 
             String expValueString = payloadString.substring(startIndex, endIndex).trim();
             if (expValueString.isEmpty()) {
-                 log.warn("Unsafe EXP extraction: EXP value string is empty.");
-                 return null;
+                log.warn("不安全的 EXP 擷取：EXP 數值字串為空。");
+                return null;
             }
-            
+
             long expMillis = Long.parseLong(expValueString) * 1000L; // JWT exp is in seconds, convert to milliseconds
             return new Date(expMillis);
 
         } catch (Exception e) { // NumberFormatException, IllegalArgumentException, etc.
-            log.warn("Unsafe EXP extraction: Error parsing token payload for EXP. {}. Token snippet: {}", e.getMessage(), token.substring(0, Math.min(token.length(), 20)));
+            log.warn("不安全的 EXP 擷取：解析權杖 payload 取得 EXP 時發生錯誤。{}。Token 片段：{}",
+                    e.getMessage(), token.substring(0, Math.min(token.length(), 20)));
             return null;
         }
     }
-
 
     /**
      * 檢查 JWT 權杖是否已過期。
@@ -482,7 +499,7 @@ public class JwtTokenProvider {
      * @param token JWT 權杖字串。
      * @return 如果權杖已過期，則返回 {@code true}；否則返回 {@code false}。
      *         如果無法確定過期時間 (例如，權杖無效或缺少過期聲明)，也返回 {@code true} (視為已過期)。
-     * @throws JwtException 如果在解析權杖以獲取過期聲明時發生錯誤。
+     * @throws JwtException             如果在解析權杖以獲取過期聲明時發生錯誤。
      * @throws IllegalArgumentException 如果權杖字串為 {@code null} 或空白。
      */
     public boolean isTokenExpired(String token) {
@@ -503,7 +520,8 @@ public class JwtTokenProvider {
      * 定期清理已失效且過期的 JTI。
      * <p>
      * 此方法使用 {@code @Scheduled} 註解來定期執行。執行頻率和緩衝時間可透過
-     * {@link JwtConfigProperties} (對應於 application.yml 中的 {@code jwt.blacklist.cleanupFixedRateMs}
+     * {@link JwtConfigProperties} (對應於 application.yml 中的
+     * {@code jwt.blacklist.cleanupFixedRateMs}
      * 和 {@code jwt.blacklist.cleanupBufferMs}) 進行配置。
      * </p>
      * <p>
@@ -518,9 +536,10 @@ public class JwtTokenProvider {
         long currentTime = System.currentTimeMillis();
         long buffer = jwtConfigProperties.getBlacklistCleanupBufferMs(); // 從配置獲取緩衝期
 
-        log.info("Running scheduled JTI cleanup task. Current invalidated JTI count: {}", invalidatedJtisWithTimestamp.size());
-        
-        int removedCount = 0;
+        log.info("Running scheduled JTI cleanup task. Current invalidated JTI count: {}",
+                invalidatedJtisWithTimestamp.size());
+
+        // removedCount 變數已移除，因未被使用
         try {
             invalidatedJtisWithTimestamp.entrySet().removeIf(entry -> {
                 boolean shouldRemove = (entry.getValue() + buffer) < currentTime;
@@ -530,23 +549,27 @@ public class JwtTokenProvider {
                 }
                 return shouldRemove;
             });
-            // After removeIf, the map is modified. To get the count of removed items, we'd need to compare size or count manually.
-            // For simplicity, we'll log the state after. A more precise count would require iterating and removing manually.
+            // After removeIf, the map is modified. To get the count of removed items, we'd
+            // need to compare size or count manually.
+            // For simplicity, we'll log the state after. A more precise count would require
+            // iterating and removing manually.
             // However, removeIf is generally more efficient.
         } catch (Exception e) {
             log.error("Error during JTI cleanup task: {}", e.getMessage(), e);
             // Depending on the error, you might want to handle it more gracefully
         }
-        
-        // It's hard to get exact removedCount with removeIf without re-iterating or pre-counting.
-        // Logging current size is more straightforward.
-        log.info("Scheduled JTI cleanup task finished. Current invalidated JTI count after cleanup: {}", invalidatedJtisWithTimestamp.size());
-    }
 
+        // It's hard to get exact removedCount with removeIf without re-iterating or
+        // pre-counting.
+        // Logging current size is more straightforward.
+        log.info("Scheduled JTI cleanup task finished. Current invalidated JTI count after cleanup: {}",
+                invalidatedJtisWithTimestamp.size());
+    }
 
     /**
      * 提供對內部 JTI 黑名單 Map 的訪問，主要用於測試或監控。
      * **警告：** 不應在業務邏輯中直接修改此 Map。
+     * 
      * @return JTI 黑名單的直接引用。
      */
     // For testing or monitoring purposes, if needed

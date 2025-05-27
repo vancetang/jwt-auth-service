@@ -1,4 +1,4 @@
-package com.jwt.auth.jwt_auth_service;
+package com.jwt.auth;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -21,17 +21,9 @@ jwt:
   accessTokenExpirationMs: 3600000 # 1 hour (1 * 60 * 60 * 1000)
   refreshTokenExpirationMs: 86400000 # 24 hours (24 * 60 * 60 * 1000)
   blacklist:
-    cleanupFixedRateMs: 3600000   # 1 hour in milliseconds (for @Scheduled task)
-    cleanupBufferMs: 86400000     # 24 hours in milliseconds (buffer for JTI retention after token expiry)
+    cleanupFixedRateMs: 3600000 # 1 hour in milliseconds (for @Scheduled task)
+    cleanupBufferMs: 86400000 # 24 hours in milliseconds (buffer for JTI retention after token expiry)
 
 # Server configuration (if needed, e.g., port)
-# server:
-#   port: 8080
-
-# Logging configuration (example, if not using a separate logback.xml or log4j2.xml)
-logging:
-  level:
-    root: INFO
-    com.jwt.auth: DEBUG # Set specific package log level
-    org.springframework.security: INFO # Can be DEBUG for more security details
-    io.jsonwebtoken: INFO # Set to WARN or ERROR in production if too verbose
+server:
+  port: 8080

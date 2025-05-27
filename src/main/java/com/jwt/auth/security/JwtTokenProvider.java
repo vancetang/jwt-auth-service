@@ -534,7 +534,7 @@ public class JwtTokenProvider {
     @Scheduled(fixedRateString = "${jwt.blacklist.cleanupFixedRateMs:3600000}", initialDelayString = "${jwt.blacklist.cleanupFixedRateMs:3600000}")
     public void cleanupInvalidatedJtis() {
         long currentTime = System.currentTimeMillis();
-        long buffer = jwtConfigProperties.getBlacklistCleanupBufferMs(); // 從配置獲取緩衝期
+        long buffer = jwtConfigProperties.getBlacklist().getCleanupBufferMs(); // 從配置獲取緩衝期
 
         log.info("Running scheduled JTI cleanup task. Current invalidated JTI count: {}",
                 invalidatedJtisWithTimestamp.size());

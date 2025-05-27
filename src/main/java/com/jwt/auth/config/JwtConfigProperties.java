@@ -70,27 +70,31 @@ public class JwtConfigProperties {
      */
     private long refreshTokenExpirationMs = 86400000L; // 24 hours in milliseconds
 
-    /**
-     * JTI 黑名單清理任務的固定執行頻率（毫秒）。
-     * <p>
-     * 預設值：3,600,000 毫秒（1 小時）。
-     * </p>
-     * <p>
-     * 用於 {@link com.jwt.auth.security.JwtTokenProvider#cleanupInvalidatedJtis()}
-     * 方法的 {@code @Scheduled} 註解。
-     * </p>
-     */
-    private long blacklistCleanupFixedRateMs = 3600000L; // 1 hour
+    private BlacklistProperties blacklist;
 
-    /**
-     * JTI 在其對應的 Token 過期後，在黑名單中額外保留的緩衝時間（毫秒）。
-     * <p>
-     * 預設值：86,400,000 毫秒（24 小時）。
-     * </p>
-     * <p>
-     * 用於 {@link com.jwt.auth.security.JwtTokenProvider#cleanupInvalidatedJtis()}
-     * 方法，以確保已過期的 JTI 不會立即被清除。
-     * </p>
-     */
-    private long blacklistCleanupBufferMs = 86400000L; // 24 hours
+    @Data
+    public static class BlacklistProperties {
+        /**
+         * JTI 黑名單清理任務的固定執行頻率（毫秒）。
+         * <p>
+         * 預設值：3,600,000 毫秒（1 小時）。
+         * </p>
+         * <p>
+         * 用於 {@link com.jwt.auth.security.JwtTokenProvider#cleanupInvalidatedJtis()}
+         * 方法的 {@code @Scheduled} 註解。
+         * </p>
+         */
+        private long cleanupFixedRateMs = 3600000L; // 1 hour
+        /**
+         * JTI 在其對應的 Token 過期後，在黑名單中額外保留的緩衝時間（毫秒）。
+         * <p>
+         * 預設值：86,400,000 毫秒（24 小時）。
+         * </p>
+         * <p>
+         * 用於 {@link com.jwt.auth.security.JwtTokenProvider#cleanupInvalidatedJtis()}
+         * 方法，以確保已過期的 JTI 不會立即被清除。
+         * </p>
+         */
+        private long cleanupBufferMs = 86400000L; // 24 hours
+    }
 }

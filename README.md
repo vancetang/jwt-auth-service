@@ -34,7 +34,7 @@ jwt-auth-service/
 
 ## 使用技術
 
-*   **後端框架**: Spring Boot 3.3.0 (請確認 Worker 實際使用的版本，目前專案 pom.xml 顯示為 3.5.0)
+*   **後端框架**: Spring Boot 3.5.0
 *   **語言**: Java 21
 *   **建置工具**: Apache Maven
 *   **核心依賴**:
